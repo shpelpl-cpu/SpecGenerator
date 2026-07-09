@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+
+# VS Code
+.vscode/
+
+# Excel output
+output/
+
+# Logs
+logs/
+
+# Test cache
+.pytest_cache/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Excel temporary files
+~$*.xlsx
