@@ -253,13 +253,16 @@ class Exporter:
             group.quantity
         )
 
-        sheet.cell(
-            row,
-            self.COL_DESCRIPTION
-        ).value = (
-            f"{group.description} "
-            f"({self._quantity_text(group.quantity)} szt)"
-        )
+        if group.has_quantity_breakdown:
+            sheet.cell(row, self.COL_DESCRIPTION).value = group.description
+        else:
+            sheet.cell(
+                row,
+                self.COL_DESCRIPTION
+            ).value = (
+                f"{group.description} "
+                f"({self._quantity_text(group.quantity)} szt)"
+            )
 
         sheet.cell(
             row,
@@ -307,6 +310,9 @@ class Exporter:
 
             row += 1
             lp += 1
+
+        if sheet.max_row >= row:
+            sheet.delete_rows(row, sheet.max_row - row + 1)
 
         output_path = Path(output_path)
 

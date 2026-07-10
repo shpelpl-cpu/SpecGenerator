@@ -15,13 +15,13 @@ class InvoiceItem:
 
     cn: str
     description_original: str
+    gender: str = ""
     description_pl: str = ""
 
     quantity: Decimal = Decimal("0")
     net_weight: Decimal = Decimal("0")
     gross_weight: Decimal = Decimal("0")
     value: Decimal = Decimal("0")
-
 
 @dataclass(slots=True)
 class GroupedItem:
@@ -31,6 +31,10 @@ class GroupedItem:
 
     cn: str
     description: str
+    gender: str = ""
+    description_parts: list[str] = field(default_factory=list)
+    genders: set[str] = field(default_factory=set)
+    has_quantity_breakdown: bool = False
 
     quantity: Decimal = Decimal("0")
     net_weight: Decimal = Decimal("0")

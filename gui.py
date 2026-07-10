@@ -332,14 +332,22 @@ class SpecGeneratorApp:
             mapper = DescriptionMapper(self.base_dir / "mappings.json")
             for item in invoice.items:
                 try:
-                    item.description_pl = mapper.map(item.description_original)
+                    item.description_pl = mapper.map(
+                        item.description_original,
+                        item.gender,
+                        item.cn,
+                    )
                 except ValueError:
                     translated = self._ask_for_mapping(item.description_original)
                     if translated is None:
                         raise MappingCancelled
 
                     mapper.learn(item.description_original, translated)
-                    item.description_pl = mapper.map(item.description_original)
+                    item.description_pl = mapper.map(
+                        item.description_original,
+                        item.gender,
+                        item.cn,
+                    )
 
             groups = InvoiceGrouper().group(invoice)
             result = InvoiceValidator().validate(invoice, groups)
