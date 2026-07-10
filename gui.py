@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import traceback
 
 from exporter import Exporter
 from grouper import InvoiceGrouper
+from history import GenerationHistory
 from mapper import DescriptionMapper
 from parser import InvoiceParser
 from validator import InvoiceValidator
@@ -29,6 +31,9 @@ class SpecGeneratorApp:
         self.dnd_files = dnd_files
         self.base_dir = Path(__file__).resolve().parent
         self.config_path = self.base_dir / "config.json"
+        self.history = GenerationHistory(
+            self.base_dir / "history" / "history.json"
+        )
         self.controls = []
 
         self.invoice_path = tk.StringVar(
@@ -127,10 +132,18 @@ class SpecGeneratorApp:
         generate_button.grid(
             row=4,
             column=0,
-            columnspan=3,
+            columnspan=2,
             pady=(0, 8),
         )
         self.controls.append(generate_button)
+
+        history_button = ttk.Button(
+            frame,
+            text="Historia",
+            command=self._show_history,
+        )
+        history_button.grid(row=4, column=2, pady=(0, 8))
+        self.controls.append(history_button)
 
         self.progress = ttk.Progressbar(
             self.root,
@@ -336,6 +349,13 @@ class SpecGeneratorApp:
 
             output_path = output_dir / "specyfikacja_wypelniona.xlsx"
             Exporter(template_path).export(groups, output_path)
+            self.history.add(
+                invoice=invoice_path.name,
+                output=str(output_path.resolve()),
+                positions=len(invoice.items),
+                groups=len(groups),
+                value=float(invoice.total_value),
+            )
 
             if self.remember_paths.get():
                 self._save_config()
@@ -412,6 +432,127 @@ class SpecGeneratorApp:
         dialog.wait_window()
 
         return result["translated"]
+
+    def _show_history(self):
+
+        window = tk.Toplevel(self.root)
+        window.title("Historia wygenerowanych specyfikacji")
+        window.geometry("900x360")
+        window.minsize(700, 240)
+        window.transient(self.root)
+
+        frame = ttk.Frame(window, padding=12)
+        frame.pack(fill="both", expand=True)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        columns = ("date", "invoice", "positions", "groups", "value", "output")
+        table = ttk.Treeview(
+            frame,
+            columns=columns,
+            show="headings",
+        )
+        headings = {
+            "date": "Data",
+            "invoice": "Faktura",
+            "positions": "Pozycji",
+            "groups": "CN",
+            "value": "Wartość",
+            "output": "Plik",
+        }
+        widths = {
+            "date": 145,
+            "invoice": 150,
+            "positions": 70,
+            "groups": 60,
+            "value": 90,
+            "output": 330,
+        }
+        for column in columns:
+            table.heading(column, text=headings[column])
+            table.column(column, width=widths[column], anchor="w")
+
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=table.yview)
+        table.configure(yscrollcommand=scrollbar.set)
+        table.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=1, column=0, columnspan=2, pady=(10, 0), sticky="e")
+        ttk.Button(
+            buttons,
+            text="Otwórz folder",
+            command=lambda: self._open_history_file(table),
+        ).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(
+            buttons,
+            text="Usuń wpis",
+            command=lambda: self._delete_history_entry(table),
+        ).grid(row=0, column=1)
+
+        self._refresh_history_table(table)
+        table.bind("<Double-1>", lambda event: self._open_history_file(table))
+        window.protocol("WM_DELETE_WINDOW", window.destroy)
+        window.grab_set()
+        window.wait_window()
+
+    def _refresh_history_table(self, table: ttk.Treeview):
+
+        table.delete(*table.get_children())
+        entries = self.history.load()
+        sorted_entries = sorted(
+            enumerate(entries),
+            key=lambda item: item[1]["date"],
+            reverse=True,
+        )
+
+        for index, entry in sorted_entries:
+            table.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    entry["date"],
+                    entry["invoice"],
+                    entry["positions"],
+                    entry["groups"],
+                    f"{entry['value']:.2f}",
+                    entry["output"],
+                ),
+            )
+
+    def _open_history_file(self, table: ttk.Treeview):
+
+        selection = table.selection()
+        if not selection:
+            return
+
+        output_path = Path(table.item(selection[0], "values")[5])
+
+        if output_path.is_file():
+            subprocess.Popen(["explorer.exe", f"/select,{output_path}"])
+        else:
+            messagebox.showwarning(
+                "Brak pliku",
+                f"Nie znaleziono pliku:\n{output_path}",
+                parent=table.winfo_toplevel(),
+            )
+
+    def _delete_history_entry(self, table: ttk.Treeview):
+
+        selection = table.selection()
+        if not selection:
+            return
+
+        if not messagebox.askyesno(
+            "Usuń wpis",
+            "Czy na pewno chcesz usunąć wybrany wpis historii?",
+            parent=table.winfo_toplevel(),
+        ):
+            return
+
+        self.history.delete(int(selection[0]))
+        self._refresh_history_table(table)
 
     def _show_traceback(self, title: str = "Błąd"):
 
