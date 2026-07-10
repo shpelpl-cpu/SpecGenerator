@@ -42,6 +42,14 @@ class Exporter:
         return float(value)
 
     @staticmethod
+    def _quantity_text(value: Decimal) -> str:
+
+        if value is None:
+            return "0"
+
+        return format(value.normalize(), "f")
+
+    @staticmethod
     def _copy_style(source, target):
 
         target._style = copy(source._style)
@@ -225,9 +233,7 @@ class Exporter:
 
         sheet.cell(row, self.COL_CN).value = group.cn
 
-        sheet.cell(row, self.COL_QTY).value = self._number(
-            group.quantity
-        )
+        sheet.cell(row, self.COL_QTY).value = 0
 
         sheet.cell(row, self.COL_NET).value = self._number(
             group.net_weight
@@ -243,12 +249,17 @@ class Exporter:
 
         sheet.cell(row, self.COL_CURRENCY).value = "EUR"
 
-        sheet.cell(row, self.COL_UNIT).value = "PCS"
+        sheet.cell(row, self.COL_UNIT).value = self._number(
+            group.quantity
+        )
 
         sheet.cell(
             row,
             self.COL_DESCRIPTION
-        ).value = group.description
+        ).value = (
+            f"{group.description} "
+            f"({self._quantity_text(group.quantity)} szt)"
+        )
 
         sheet.cell(
             row,
