@@ -13,6 +13,10 @@ from parser import InvoiceParser
 from validator import InvoiceValidator
 
 
+class MappingCancelled(Exception):
+    """Raised when the user cancels adding a missing description."""
+
+
 class SpecGeneratorApp:
 
     def __init__(
@@ -313,20 +317,16 @@ class SpecGeneratorApp:
             output_dir = Path(output_dir_text).expanduser()
             invoice = InvoiceParser(invoice_path).parse()
             mapper = DescriptionMapper(self.base_dir / "mappings.json")
-            unknown = []
-
             for item in invoice.items:
                 try:
                     item.description_pl = mapper.map(item.description_original)
                 except ValueError:
-                    unknown.append(item.description_original)
+                    translated = self._ask_for_mapping(item.description_original)
+                    if translated is None:
+                        raise MappingCancelled
 
-            if unknown:
-                unknown_descriptions = "\n".join(sorted(set(unknown)))
-                raise ValueError(
-                    "Brak mapowania dla opisów:\n"
-                    f"{unknown_descriptions}"
-                )
+                    mapper.learn(item.description_original, translated)
+                    item.description_pl = mapper.map(item.description_original)
 
             groups = InvoiceGrouper().group(invoice)
             result = InvoiceValidator().validate(invoice, groups)
@@ -339,6 +339,11 @@ class SpecGeneratorApp:
 
             if self.remember_paths.get():
                 self._save_config()
+
+        except MappingCancelled:
+            self.status.set("Anulowano")
+            self._set_busy(False)
+            return
 
         except Exception:
             self.status.set("Błąd")
@@ -353,6 +358,60 @@ class SpecGeneratorApp:
             f"Wygenerowano plik:\n{output_path}",
             parent=self.root,
         )
+
+    def _ask_for_mapping(self, original: str) -> str | None:
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Nieznany opis")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+
+        result = {"translated": None}
+        translated = tk.StringVar()
+
+        frame = ttk.Frame(dialog, padding=16)
+        frame.grid(sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+
+        ttk.Label(frame, text="Nieznany opis:").grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(frame, text=original, wraplength=360).grid(
+            row=1, column=0, sticky="w", pady=(2, 12)
+        )
+        ttk.Label(frame, text="Polski opis:").grid(
+            row=2, column=0, sticky="w"
+        )
+        entry = ttk.Entry(frame, textvariable=translated, width=45)
+        entry.grid(row=3, column=0, sticky="ew", pady=(2, 14))
+
+        def save():
+            value = translated.get().strip()
+            if not value:
+                messagebox.showwarning(
+                    "Brak opisu",
+                    "Wpisz polski opis.",
+                    parent=dialog,
+                )
+                entry.focus_set()
+                return
+
+            result["translated"] = value
+            dialog.destroy()
+
+        def cancel():
+            dialog.destroy()
+
+        ttk.Button(frame, text="Zapisz", command=save).grid(row=4, column=0)
+
+        dialog.bind("<Return>", lambda event: save())
+        dialog.bind("<Escape>", lambda event: cancel())
+        dialog.protocol("WM_DELETE_WINDOW", cancel)
+        dialog.grab_set()
+        entry.focus_set()
+        dialog.wait_window()
+
+        return result["translated"]
 
     def _show_traceback(self, title: str = "Błąd"):
 

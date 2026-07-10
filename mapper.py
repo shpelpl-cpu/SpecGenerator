@@ -44,8 +44,9 @@ class DescriptionMapper:
                 data,
                 f,
                 ensure_ascii=False,
-                indent=2
+                indent=2,
             )
+            f.write("\n")
 
     def map(self, description: str) -> str:
 
@@ -76,3 +77,4 @@ class DescriptionMapper:
         self.mapping[normalize_text(original)] = translated
 
         self.save()
+        self.load()
