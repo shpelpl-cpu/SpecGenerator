@@ -93,6 +93,67 @@ class Exporter:
             sheet.merged_cells.add(merged_range)
             merged_range.format()
 
+    @staticmethod
+    def _copy_data_row_merged_cells(
+        sheet: Worksheet,
+        template_row: int,
+        target_rows: range,
+    ):
+
+        """Copy horizontal merged ranges belonging to the template row."""
+
+        template_ranges = [
+            merged_range
+            for merged_range in sheet.merged_cells.ranges
+            if (
+                merged_range.min_row == template_row
+                and merged_range.max_row == template_row
+            )
+        ]
+
+        for row in target_rows:
+
+            for merged_range in template_ranges:
+                sheet.merge_cells(
+                    start_row=row,
+                    start_column=merged_range.min_col,
+                    end_row=row,
+                    end_column=merged_range.max_col,
+                )
+
+    @staticmethod
+    def _capture_print_settings(sheet: Worksheet) -> dict:
+
+        """Keep print settings intact while rows are inserted."""
+
+        return {
+            "page_setup": copy(sheet.page_setup),
+            "page_margins": copy(sheet.page_margins),
+            "print_options": copy(sheet.print_options),
+            "print_area": sheet.print_area,
+            "print_title_rows": sheet.print_title_rows,
+            "print_title_cols": sheet.print_title_cols,
+        }
+
+    @staticmethod
+    def _restore_print_settings(
+        sheet: Worksheet,
+        settings: dict,
+    ):
+
+        sheet.page_setup = copy(settings["page_setup"])
+        sheet.page_margins = copy(settings["page_margins"])
+        sheet.print_options = copy(settings["print_options"])
+
+        if settings["print_area"] is not None:
+            sheet.print_area = settings["print_area"]
+
+        if settings["print_title_rows"] is not None:
+            sheet.print_title_rows = settings["print_title_rows"]
+
+        if settings["print_title_cols"] is not None:
+            sheet.print_title_cols = settings["print_title_cols"]
+
     def _insert_rows(
         self,
         sheet: Worksheet,
@@ -123,10 +184,12 @@ class Exporter:
             amount,
         )
 
-        for row in range(
+        inserted_rows = range(
             insert_at,
             insert_at + amount,
-        ):
+        )
+
+        for row in inserted_rows:
 
             template_dimension = copy(
                 sheet.row_dimensions[template_row]
@@ -143,6 +206,12 @@ class Exporter:
                 dst = sheet.cell(row, col)
 
                 self._copy_style(src, dst)
+
+        self._copy_data_row_merged_cells(
+            sheet,
+            template_row,
+            inserted_rows,
+        )
 
     def _write_row(
         self,
@@ -203,6 +272,7 @@ class Exporter:
         )
 
         sheet = workbook.active
+        print_settings = self._capture_print_settings(sheet)
 
         if len(groups) > 1:
 
@@ -232,6 +302,11 @@ class Exporter:
         output_path.parent.mkdir(
             parents=True,
             exist_ok=True
+        )
+
+        self._restore_print_settings(
+            sheet,
+            print_settings,
         )
 
         workbook.save(output_path)
