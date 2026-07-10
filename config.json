@@ -1,0 +1,6 @@
+{
+  "invoice_path": "C:\\SpecGenerator\\invoice.xlsx",
+  "template_path": "C:\\SpecGenerator\\templates\\spec_template.xlsx",
+  "output_dir": "C:\\SpecGenerator\\output",
+  "remember_paths": true
+}
