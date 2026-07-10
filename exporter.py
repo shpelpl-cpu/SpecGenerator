@@ -5,7 +5,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from openpyxl import load_workbook
-from openpyxl.styles import Alignment
 from openpyxl.worksheet.worksheet import Worksheet
 
 from models import GroupedItem
@@ -45,15 +44,54 @@ class Exporter:
     @staticmethod
     def _copy_style(source, target):
 
-        if not source.has_style:
-            return
+        target._style = copy(source._style)
 
-        target.font = copy(source.font)
-        target.fill = copy(source.fill)
-        target.border = copy(source.border)
-        target.alignment = copy(source.alignment)
-        target.number_format = source.number_format
-        target.protection = copy(source.protection)
+    @staticmethod
+    def _move_row_dimensions(
+        sheet: Worksheet,
+        start_row: int,
+        amount: int,
+    ):
+
+        """Move row metadata which openpyxl does not move with cells."""
+
+        rows_to_move = [
+            row
+            for row in sheet.row_dimensions
+            if row >= start_row
+        ]
+
+        for row in sorted(rows_to_move, reverse=True):
+
+            dimension = copy(sheet.row_dimensions[row])
+            dimension.index = row + amount
+
+            sheet.row_dimensions[row + amount] = dimension
+            del sheet.row_dimensions[row]
+
+    @staticmethod
+    def _move_merged_cells(
+        sheet: Worksheet,
+        start_row: int,
+        amount: int,
+    ):
+
+        """Keep merged ranges aligned with the rows moved by insert_rows."""
+
+        merged_ranges = list(sheet.merged_cells.ranges)
+
+        sheet.merged_cells.ranges.clear()
+
+        for merged_range in merged_ranges:
+
+            if merged_range.min_row >= start_row:
+                merged_range.shift(row_shift=amount)
+
+            elif merged_range.max_row >= start_row:
+                merged_range.max_row += amount
+
+            sheet.merged_cells.add(merged_range)
+            merged_range.format()
 
     def _insert_rows(
         self,
@@ -64,25 +102,41 @@ class Exporter:
         if amount <= 0:
             return
 
+        insert_at = self.DATA_START_ROW + 1
+        template_row = self.DATA_START_ROW
+        max_column = sheet.max_column
+
+        self._move_row_dimensions(
+            sheet,
+            insert_at,
+            amount,
+        )
+
         sheet.insert_rows(
-            self.DATA_START_ROW + 1,
+            insert_at,
             amount
         )
 
-        template_row = self.DATA_START_ROW
+        self._move_merged_cells(
+            sheet,
+            insert_at,
+            amount,
+        )
 
         for row in range(
-            self.DATA_START_ROW + 1,
-            self.DATA_START_ROW + amount + 1
+            insert_at,
+            insert_at + amount,
         ):
 
-            sheet.row_dimensions[row].height = (
-                sheet.row_dimensions[template_row].height
+            template_dimension = copy(
+                sheet.row_dimensions[template_row]
             )
+            template_dimension.index = row
+            sheet.row_dimensions[row] = template_dimension
 
             for col in range(
                 1,
-                sheet.max_column + 1
+                max_column + 1
             ):
 
                 src = sheet.cell(template_row, col)
@@ -137,16 +191,7 @@ class Exporter:
             self.COL_PREF
         ).value = "100"
 
-        for col in range(1, 12):
 
-            sheet.cell(
-                row,
-                col
-            ).alignment = Alignment(
-                horizontal="center",
-                vertical="center",
-                wrap_text=True
-            )    
     def export(
         self,
         groups: list[GroupedItem],
